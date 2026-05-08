@@ -137,15 +137,6 @@ if _veto_available and not args.skip_veto:
     try:
         _gemini_key = os.environ.get("GEMINI_API_KEY", "")
         if not _gemini_key:
-            # Try loading from KAIROS .env
-            _env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "Karios", ".env")
-            if os.path.isfile(_env_path):
-                with open(_env_path) as _f:
-                    for _line in _f:
-                        if _line.startswith("GEMINI_API_KEY="):
-                            _gemini_key = _line.strip().split("=", 1)[1]
-                            break
-        if not _gemini_key:
             print("  No GEMINI_API_KEY found -- skipping VetoShield")
         else:
             provider = GeminiProvider(api_key=_gemini_key, model=args.veto_model, rpm=6)
