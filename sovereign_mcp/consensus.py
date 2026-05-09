@@ -104,34 +104,46 @@ class ConsensusVerifier:
         result = verifier.verify(tool_output, frozen_schema)
     """
 
-    def __init__(self, model_a, model_b):
+    def __init__(self, model_a, model_b=None, consensus_models=None):
         """
         Args:
             model_a: Primary model provider (ModelProvider subclass).
             model_b: Verifier model provider (ModelProvider subclass).
+            consensus_models: List of additional ModelProvider subclasses for N-model consensus.
 
         Raises:
-            ValueError: If both models use the same model_id (tautology).
+            ValueError: If models are not diverse, or if temperature != 0.
         """
-        if model_a.model_id == model_b.model_id:
+        self.models = [model_a]
+        if model_b:
+            self.models.append(model_b)
+        if consensus_models:
+            self.models.extend(consensus_models)
+            
+        if len(self.models) < 2:
+            raise ValueError("Consensus requires at least two models.")
+
+        model_ids = [m.model_id for m in self.models]
+        if len(model_ids) != len(set(model_ids)):
             raise ValueError(
-                "CONSENSUS INTEGRITY VIOLATION: Model A and Model B must use "
-                f"different models. Both are '{model_a.model_id}'. "
+                "CONSENSUS INTEGRITY VIOLATION: All models must use "
+                f"different models. Provided are '{model_ids}'. "
                 "Same model = same output = tautology (comparing X to X)."
             )
-        if model_a.temperature != 0 or model_b.temperature != 0:
-            raise ValueError(
-                "CONSENSUS INTEGRITY VIOLATION: Both models must use temperature=0. "
-                f"Model A: {model_a.temperature}, Model B: {model_b.temperature}. "
-                "Temperature > 0 causes random output = false rejections."
-            )
+            
+        for m in self.models:
+            if m.temperature != 0:
+                raise ValueError(
+                    "CONSENSUS INTEGRITY VIOLATION: All models must use temperature=0. "
+                    f"Model {m.model_id} has temperature={m.temperature}. "
+                    "Temperature > 0 causes random output = false rejections."
+                )
 
-        self._model_a = model_a
-        self._model_b = model_b
+        self._model_a = self.models[0]
+        self._model_b = self.models[1]
 
         logger.info(
-            f"[Consensus] Initialized. Model A: {model_a.model_id}, "
-            f"Model B: {model_b.model_id}"
+            f"[Consensus] Initialized. Models: {model_ids}"
         )
 
     def verify(self, tool_output, frozen_schema, verification_source=None):
@@ -148,84 +160,100 @@ class ConsensusVerifier:
         Returns:
             ConsensusResult with match status, hashes, timing, and model outputs.
         """
+        import concurrent.futures
         start_time = time.time()
 
-        # Model A processes tool output
-        try:
-            output_a = self._model_a.extract_structured(tool_output, frozen_schema)
-        except Exception as e:
-            elapsed = (time.time() - start_time) * 1000
-            return ConsensusResult(
-                match=False,
-                hash_a=None,
-                hash_b=None,
-                output_a=None,
-                output_b=None,
-                reason=f"Model A ({self._model_a.model_id}) error: {e}",
-                latency_ms=elapsed,
-            )
+        inputs = [tool_output]
+        for _ in range(1, len(self.models)):
+            inputs.append(verification_source if verification_source is not None else tool_output)
 
-        # Model B processes either same output or independent source
-        model_b_input = verification_source if verification_source is not None else tool_output
-        try:
-            output_b = self._model_b.extract_structured(model_b_input, frozen_schema)
-        except Exception as e:
-            elapsed = (time.time() - start_time) * 1000
-            return ConsensusResult(
-                match=False,
-                hash_a=canonical_hash(output_a) if output_a else None,
-                hash_b=None,
-                output_a=output_a,
-                output_b=None,
-                reason=f"Model B ({self._model_b.model_id}) error: {e}",
-                latency_ms=elapsed,
-            )
+        def fetch(idx, model, inp):
+            try:
+                out = model.extract_structured(inp, frozen_schema)
+                return out, None
+            except Exception as e:
+                return None, f"Model {idx+1} ({model.model_id}) error: {e}"
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(self.models)) as executor:
+            futures = [
+                executor.submit(fetch, i, m, inp)
+                for i, (m, inp) in enumerate(zip(self.models, inputs))
+            ]
+            results = [f.result() for f in futures]
+
+        outputs = []
+        hashes = []
+        
+        for i, (out, err) in enumerate(results):
+            if err:
+                elapsed = (time.time() - start_time) * 1000
+                return ConsensusResult(
+                    match=False,
+                    reason=err,
+                    latency_ms=elapsed,
+                    used_independent_source=verification_source is not None,
+                    outputs=[r[0] for r in results[:i+1]],
+                    hashes=[canonical_hash(r[0]) if r[0] else None for r in results[:i+1]]
+                )
+            outputs.append(out)
+            hashes.append(canonical_hash(out))
 
         # Deterministic comparison: canonical hash match
-        match, hash_a, hash_b = hashes_match(output_a, output_b)
+        base_hash = hashes[0]
+        match = all(h == base_hash for h in hashes[1:])
         elapsed = (time.time() - start_time) * 1000
 
         if match:
             logger.info(
-                f"[Consensus] MATCH. Hash: {hash_a[:16]}... "
+                f"[Consensus] MATCH. Hash: {base_hash[:16]}... "
                 f"Latency: {elapsed:.1f}ms"
             )
             reason = "Consensus: hashes match."
         else:
             logger.warning(
                 f"[Consensus] MISMATCH. "
-                f"Hash A: {hash_a[:16]}... Hash B: {hash_b[:16]}... "
+                f"Hashes: {[h[:16] + '...' for h in hashes]} "
                 f"Latency: {elapsed:.1f}ms"
             )
             reason = (
-                f"Consensus MISMATCH: Model A ({self._model_a.model_id}) "
-                f"and Model B ({self._model_b.model_id}) produced different data."
+                f"Consensus MISMATCH: Models produced different data. "
+                f"Hashes: {[h[:8] for h in hashes]}"
             )
 
         return ConsensusResult(
             match=match,
-            hash_a=hash_a,
-            hash_b=hash_b,
-            output_a=output_a,
-            output_b=output_b,
             reason=reason,
             latency_ms=elapsed,
             used_independent_source=verification_source is not None,
+            hashes=hashes,
+            outputs=outputs
         )
 
 
 class ConsensusResult:
     """Result of a consensus verification. Immutable after creation."""
     __slots__ = ('match', 'hash_a', 'hash_b', 'output_a', 'output_b',
+                 'hashes', 'outputs',
                  'reason', 'latency_ms', 'used_independent_source', '_initialized')
 
-    def __init__(self, match, hash_a, hash_b, output_a, output_b,
-                 reason, latency_ms, used_independent_source=False):
+    def __init__(self, match, hash_a=None, hash_b=None, output_a=None, output_b=None,
+                 reason="", latency_ms=0, used_independent_source=False,
+                 hashes=None, outputs=None):
         object.__setattr__(self, 'match', match)
-        object.__setattr__(self, 'hash_a', hash_a)
-        object.__setattr__(self, 'hash_b', hash_b)
-        object.__setattr__(self, 'output_a', output_a)
-        object.__setattr__(self, 'output_b', output_b)
+        
+        if hashes is None:
+            hashes = [hash_a, hash_b] if hash_b else ([hash_a] if hash_a else [])
+        if outputs is None:
+            outputs = [output_a, output_b] if output_b else ([output_a] if output_a else [])
+            
+        object.__setattr__(self, 'hashes', hashes)
+        object.__setattr__(self, 'outputs', outputs)
+        
+        object.__setattr__(self, 'hash_a', hashes[0] if hashes else hash_a)
+        object.__setattr__(self, 'hash_b', hashes[1] if len(hashes) > 1 else hash_b)
+        object.__setattr__(self, 'output_a', outputs[0] if outputs else output_a)
+        object.__setattr__(self, 'output_b', outputs[1] if len(outputs) > 1 else output_b)
+        
         object.__setattr__(self, 'reason', reason)
         object.__setattr__(self, 'latency_ms', latency_ms)
         object.__setattr__(self, 'used_independent_source', used_independent_source)
@@ -248,6 +276,7 @@ class ConsensusResult:
             "match": self.match,
             "hash_a": self.hash_a,
             "hash_b": self.hash_b,
+            "hashes": self.hashes,
             "reason": self.reason,
             "latency_ms": round(self.latency_ms, 1),
             "used_independent_source": self.used_independent_source,
