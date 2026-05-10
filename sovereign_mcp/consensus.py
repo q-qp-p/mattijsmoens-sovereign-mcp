@@ -16,6 +16,7 @@ Consensus Integrity Requirements (from architecture doc):
 import json
 import time
 import logging
+import requests
 from sovereign_mcp.canonical_json import canonical_hash, hashes_match, canonical_dumps
 
 logger = logging.getLogger(__name__)
@@ -87,6 +88,80 @@ class MockModelProvider(ModelProvider):
     def extract_structured(self, content, schema):
         return self._response
 
+class OpenRouterMCPProvider(ModelProvider):
+    """Native OpenRouter provider for Sovereign-MCP Consensus."""
+    
+    def __init__(self, model_id, api_key):
+        super().__init__(model_id, temperature=0)
+        self.api_key = api_key
+
+    def extract_structured(self, content, schema, system_prompt=None):
+        url = "https://openrouter.ai/api/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
+        }
+        
+        if not system_prompt:
+            prompt = f"Return ONLY valid JSON matching this schema:\n{json.dumps(schema, indent=2)}\n\nData:\n{content}"
+        else:
+            prompt = f"{system_prompt}\n\nData:\n{content}\n\nReturn ONLY valid JSON matching this schema:\n{json.dumps(schema, indent=2)}"
+        
+        payload = {
+            "model": self.model_id,
+            "temperature": 0,
+            "response_format": {"type": "json_object"},
+            "messages": [{"role": "user", "content": prompt}]
+        }
+        
+        response = requests.post(url, headers=headers, json=payload, timeout=30)
+        if response.status_code != 200:
+            raise RuntimeError(f"OpenRouter Error: {response.text}")
+            
+        data = response.json()
+        raw_output = data["choices"][0]["message"]["content"]
+        
+        try:
+            return json.loads(raw_output)
+        except json.JSONDecodeError:
+            raw_output = raw_output.replace("```json", "").replace("```", "").strip()
+            return json.loads(raw_output)
+
+class LocalMCPProvider(ModelProvider):
+    """Native Local (Ollama/LM Studio) provider for Air-Gapped Sovereign-MCP Consensus."""
+    
+    def __init__(self, model_id, base_url="http://localhost:11434/v1"):
+        super().__init__(model_id, temperature=0)
+        self.base_url = base_url
+
+    def extract_structured(self, content, schema, system_prompt=None):
+        url = f"{self.base_url}/chat/completions"
+        headers = {"Content-Type": "application/json"}
+        
+        if not system_prompt:
+            prompt = f"Return ONLY valid JSON matching this schema:\n{json.dumps(schema, indent=2)}\n\nData:\n{content}"
+        else:
+            prompt = f"{system_prompt}\n\nData:\n{content}\n\nReturn ONLY valid JSON matching this schema:\n{json.dumps(schema, indent=2)}"
+        
+        payload = {
+            "model": self.model_id,
+            "temperature": 0,
+            "response_format": {"type": "json_object"},
+            "messages": [{"role": "user", "content": prompt}]
+        }
+        
+        response = requests.post(url, headers=headers, json=payload, timeout=30)
+        if response.status_code != 200:
+            raise RuntimeError(f"Local LLM Error: {response.text}")
+            
+        data = response.json()
+        raw_output = data["choices"][0]["message"]["content"]
+        
+        try:
+            return json.loads(raw_output)
+        except json.JSONDecodeError:
+            raw_output = raw_output.replace("```json", "").replace("```", "").strip()
+            return json.loads(raw_output)
 
 class ConsensusVerifier:
     """
