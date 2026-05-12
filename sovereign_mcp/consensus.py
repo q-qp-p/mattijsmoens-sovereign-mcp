@@ -91,9 +91,10 @@ class MockModelProvider(ModelProvider):
 class OpenRouterMCPProvider(ModelProvider):
     """Native OpenRouter provider for Sovereign-MCP Consensus."""
     
-    def __init__(self, model_id, api_key):
+    def __init__(self, model_id, api_key, enforce_grammar=False):
         super().__init__(model_id, temperature=0)
         self.api_key = api_key
+        self.enforce_grammar = enforce_grammar
 
     def extract_structured(self, content, schema, system_prompt=None):
         url = "https://openrouter.ai/api/v1/chat/completions"
@@ -110,9 +111,21 @@ class OpenRouterMCPProvider(ModelProvider):
         payload = {
             "model": self.model_id,
             "temperature": 0,
-            "response_format": {"type": "json_object"},
             "messages": [{"role": "user", "content": prompt}]
         }
+        
+        if self.enforce_grammar:
+            # OpenRouter / OpenAI strict structured outputs
+            payload["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "extraction",
+                    "strict": True,
+                    "schema": schema
+                }
+            }
+        else:
+            payload["response_format"] = {"type": "json_object"}
         
         response = requests.post(url, headers=headers, json=payload, timeout=30)
         if response.status_code != 200:
@@ -130,9 +143,10 @@ class OpenRouterMCPProvider(ModelProvider):
 class LocalMCPProvider(ModelProvider):
     """Native Local (Ollama/LM Studio) provider for Air-Gapped Sovereign-MCP Consensus."""
     
-    def __init__(self, model_id, base_url="http://localhost:11434/v1"):
+    def __init__(self, model_id, base_url="http://localhost:11434/v1", enforce_grammar=False):
         super().__init__(model_id, temperature=0)
         self.base_url = base_url
+        self.enforce_grammar = enforce_grammar
 
     def extract_structured(self, content, schema, system_prompt=None):
         url = f"{self.base_url}/chat/completions"
@@ -146,9 +160,14 @@ class LocalMCPProvider(ModelProvider):
         payload = {
             "model": self.model_id,
             "temperature": 0,
-            "response_format": {"type": "json_object"},
             "messages": [{"role": "user", "content": prompt}]
         }
+        
+        if self.enforce_grammar:
+            # Ollama native strict structured outputs (passes schema as format)
+            payload["format"] = schema
+        else:
+            payload["response_format"] = {"type": "json_object"}
         
         response = requests.post(url, headers=headers, json=payload, timeout=30)
         if response.status_code != 200:
