@@ -60,20 +60,14 @@ ATTACK_CATEGORIES: Dict[str, List[str]] = {
 }
 
 # Common stopwords to filter out during keyword extraction
-_STOPWORDS = {
-    "the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
-    "have", "has", "had", "do", "does", "did", "will", "would", "could",
-    "should", "may", "might", "can", "shall", "to", "of", "in", "for",
-    "on", "with", "at", "by", "from", "as", "into", "through", "about",
-    "and", "but", "or", "nor", "not", "so", "yet", "both", "either",
-    "neither", "this", "that", "these", "those", "it", "its", "my",
-    "your", "his", "her", "our", "their", "me", "him", "us", "them",
-    "i", "you", "he", "she", "we", "they", "what", "which", "who",
-    "how", "when", "where", "why", "all", "each", "every", "some",
-    "any", "no", "just", "also", "very", "too", "please", "then",
-    "now", "here", "there", "up", "out", "if", "than", "after",
-    "before", "above", "below", "between", "under", "over",
-}
+_STOPWORDS: Set[str] = set()
+_stopwords_path = os.path.join(os.path.dirname(__file__), "data", "stopwords.json")
+if os.path.exists(_stopwords_path):
+    try:
+        with open(_stopwords_path, 'r', encoding='utf-8') as f:
+            _STOPWORDS = set(json.load(f))
+    except Exception as e:
+        logger.error(f"Failed to load Stopwords: {e}")
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS scan_log (
@@ -174,16 +168,20 @@ class AdaptiveShield:
     # ------------------------------------------------------------------
 
     def _get_conn(self) -> sqlite3.Connection:
-        os.makedirs(os.path.dirname(self._db_path) or ".", exist_ok=True)
-        conn = sqlite3.connect(self._db_path)
-        conn.row_factory = sqlite3.Row
-        return conn
+        if not hasattr(self, "_local"):
+            self._local = threading.local()
+        if not hasattr(self._local, "conn"):
+            os.makedirs(os.path.dirname(self._db_path) or ".", exist_ok=True)
+            conn = sqlite3.connect(self._db_path)
+            conn.row_factory = sqlite3.Row
+            self._local.conn = conn
+        return self._local.conn
 
     def _init_db(self):
         conn = self._get_conn()
         conn.executescript(_SCHEMA)
         conn.commit()
-        conn.close()
+        pass  # conn.close() removed for connection pooling
 
     def _load_approved_rules(self):
         conn = self._get_conn()
@@ -191,7 +189,7 @@ class AdaptiveShield:
         cur.execute("SELECT pattern FROM rules WHERE status = 'approved'")
         for row in cur.fetchall():
             self._custom_rules.add(row["pattern"].lower())
-        conn.close()
+        pass  # conn.close() removed for connection pooling
         if self._custom_rules:
             logger.info(f"Loaded {len(self._custom_rules)} custom rules from database.")
 
@@ -209,7 +207,7 @@ class AdaptiveShield:
                 self._category_keywords[cat].add(kw)
         except sqlite3.OperationalError:
             pass  # Table may not exist yet on first run
-        conn.close()
+        pass  # conn.close() removed for connection pooling
         total = sum(len(v) for v in self._category_keywords.values())
         if total:
             logger.info(f"Loaded {total} category keywords across {len(self._category_keywords)} categories.")
@@ -219,11 +217,17 @@ class AdaptiveShield:
         conn = self._get_conn()
         conn.execute("DELETE FROM scan_log WHERE timestamp < ?", (cutoff,))
         conn.commit()
-        conn.close()
+        pass  # conn.close() removed for connection pooling
 
     # ------------------------------------------------------------------
     # SCAN
     # ------------------------------------------------------------------
+
+    def close(self):
+        """Close the SQLite connection for the current thread."""
+        if hasattr(self, "_local") and hasattr(self._local, "conn"):
+            self._local.conn.close()
+            del self._local.conn
 
     def scan(self, text: str) -> dict:
         """
@@ -271,7 +275,7 @@ class AdaptiveShield:
                 (scan_id, text, int(is_safe), stage, reason, time.time()),
             )
             conn.commit()
-            conn.close()
+            pass  # conn.close() removed for connection pooling
 
         return {
             "scan_id": scan_id,
@@ -305,7 +309,7 @@ class AdaptiveShield:
             (scan_id,),
         )
         row = cur.fetchone()
-        conn.close()
+        pass  # conn.close() removed for connection pooling
 
         if not row:
             return {"report_id": None, "status": "error", "rule_created": False,
@@ -330,7 +334,7 @@ class AdaptiveShield:
                 (report_id, scan_id, input_text, reason, time.time(), "pending"),
             )
             conn.commit()
-            conn.close()
+            pass  # conn.close() removed for connection pooling
 
         # Keyword extraction + category classification
         keywords = self._extract_keywords(input_text)
@@ -366,7 +370,7 @@ class AdaptiveShield:
                         except sqlite3.IntegrityError:
                             pass
                     conn.commit()
-                    conn.close()
+                    pass  # conn.close() removed for connection pooling
 
                 if category not in self._category_keywords:
                     self._category_keywords[category] = set()
@@ -434,7 +438,7 @@ class AdaptiveShield:
             (scan_id,),
         )
         row = cur.fetchone()
-        conn.close()
+        pass  # conn.close() removed for connection pooling
 
         if not row:
             return {"status": "error", "pruned_keywords": [],
@@ -469,7 +473,7 @@ class AdaptiveShield:
                             learned_kws.discard(kw)
                             pruned.append(kw)
                         conn.commit()
-                        conn.close()
+                        pass  # conn.close() removed for connection pooling
 
                     if not learned_kws:
                         del self._category_keywords[category]
@@ -502,7 +506,7 @@ class AdaptiveShield:
             (exclude_scan_id,)
         )
         rows = cur.fetchall()
-        conn.close()
+        pass  # conn.close() removed for connection pooling
 
         total = len(rows)
         if total == 0:
@@ -528,7 +532,7 @@ class AdaptiveShield:
             (exclude_scan_id,),
         )
         rows = cur.fetchall()
-        conn.close()
+        pass  # conn.close() removed for connection pooling
 
         total = len(rows)
         if total == 0:
@@ -556,7 +560,7 @@ class AdaptiveShield:
                  sandbox["total_tested"], status, time.time()),
             )
             conn.commit()
-            conn.close()
+            pass  # conn.close() removed for connection pooling
 
     # ------------------------------------------------------------------
     # KEYWORD EXTRACTION + CLASSIFICATION
@@ -614,7 +618,7 @@ class AdaptiveShield:
         else:
             cur.execute("SELECT * FROM rules")
         rows = [dict(r) for r in cur.fetchall()]
-        conn.close()
+        pass  # conn.close() removed for connection pooling
         return rows
 
     @property
@@ -630,7 +634,7 @@ class AdaptiveShield:
         approved = cur.fetchone()["c"]
         cur.execute("SELECT COUNT(*) as c FROM rules WHERE status = 'pending'")
         pending = cur.fetchone()["c"]
-        conn.close()
+        pass  # conn.close() removed for connection pooling
         total_kws = sum(len(v) for v in self._category_keywords.values())
         return {
             "total_scans": total_scans,

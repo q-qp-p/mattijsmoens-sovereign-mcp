@@ -1,8 +1,8 @@
-# Sovereign MCP — Deterministic MCP Security Architecture
+# Sovereign MCP - Deterministic MCP Security Architecture
 
 **FrozenNamespace as Root of Trust for Model Context Protocol Tool Verification**
 
-*Sovereign Shield / Mattijs Moens — March 2026*
+*Sovereign Shield / Mattijs Moens - March 2026*
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![License: BSL 1.1](https://img.shields.io/badge/license-BSL%201.1-orange.svg)](LICENSE)
@@ -91,14 +91,14 @@ else:
 
 ## ⚠️ CRITICAL: The Freeze Is Irreversible
 
-**Once you call `registry.freeze()`, the registry is permanently locked for the lifetime of the process.** This is by design — it is the core security guarantee.
+**Once you call `registry.freeze()`, the registry is permanently locked for the lifetime of the process.** This is by design - it is the core security guarantee.
 
 After freezing:
 - **No new tools can be registered.** `register_tool()` raises `RuntimeError`.
 - **No existing tool definitions can be modified.** `FrozenNamespace.__setattr__` raises `TypeError`.
 - **No attributes can be deleted.** `FrozenNamespace.__delattr__` raises `TypeError`.
 - **No instances can be created.** `FrozenNamespace.__call__` raises `TypeError`.
-- **Schema dicts/lists returned are deep copies** — modifying a returned schema does NOT modify the frozen original.
+- **Schema dicts/lists returned are deep copies** - modifying a returned schema does NOT modify the frozen original.
 - **Even reading a mutable attribute returns a copy**, not a reference. External code cannot mutate internal state.
 
 This is not a policy. This is an **architectural constraint enforced by the Python runtime**. There is no API to unlock, no admin override, no escape hatch. The only way to register new tools is to restart the process with a new freeze cycle.
@@ -153,10 +153,10 @@ Tool Call
    │
    ├─ [Tool Executes]
    │
-   ├─ Step 5: Layer A — Schema Check ────── Output matches frozen schema?
-   ├─ Step 6: Layer B — Deception Scan ──── Known injection patterns?
-   ├─ Step 7: Layer C — JSON Consensus ──── N-model hash match?
-   └─ Step 8: Layer D — Behavioral Floor ── Within frozen capability set?
+   ├─ Step 5: Layer A - Schema Check ────── Output matches frozen schema?
+   ├─ Step 6: Layer B - Deception Scan ──── Known injection patterns?
+   ├─ Step 7: Layer C - JSON Consensus ──── N-model hash match?
+   └─ Step 8: Layer D - Behavioral Floor ── Within frozen capability set?
          │
          ├─ ALL PASS → Admitted to LLM context
          └─ ANY FAIL → DECLINED (default deny)
@@ -281,7 +281,7 @@ Before hashing, both outputs undergo canonical normalization:
 4. Consistent number formatting (no trailing zeros, no leading zeros, `-0.0` → `0`)
 5. Consistent separators (no spaces after colons or commas)
 6. Remove any optional/null fields
-7. NaN → `"__NaN__"`, Infinity → `"__+Infinity__"` / `"__-Infinity__"` (unique sentinels — prevents false consensus when one model returns NaN and another returns 0)
+7. NaN → `"__NaN__"`, Infinity → `"__+Infinity__"` / `"__-Infinity__"` (unique sentinels - prevents false consensus when one model returns NaN and another returns 0)
 
 ```python
 from sovereign_mcp import canonical_hash, hashes_match
@@ -292,7 +292,7 @@ data_b = {"age": 34, "city": "Brussels", "customer_name": "John"}
 data_c = {"customer_name": "John", "age": 34, "city": "brussels"}
 
 match, hashes = hashes_match([data_a, data_b, data_c])
-# match = True — semantically identical after normalization
+# match = True - semantically identical after normalization
 ```
 
 **Why this is deterministic:**
@@ -330,7 +330,7 @@ The semantic gap is the hardest problem in AI security: an attacker crafts conte
 3. Make multiple independent models produce identical compromised output (Layer 3)
 4. Inject an instruction that falls within the agent's frozen permissions (Layer 4)
 
-The probability of all four is astronomically small. And condition 4 means that even in the worst case, the attacker can only make the agent do something it was already allowed to do — just with bad data.
+The probability of all four is astronomically small. And condition 4 means that even in the worst case, the attacker can only make the agent do something it was already allowed to do - just with bad data.
 
 ---
 
@@ -449,10 +449,10 @@ critical = log.get_incidents(severity="CRITICAL", limit=10)
 
 | Severity | Triggered By | Response |
 | -------- | ------------ | -------- |
-| **CRITICAL** | Layer D (behavioral floor) — attacker bypassed 3 layers | Immediate escalation |
-| **HIGH** | Layer C (consensus) failed — potential data poisoning | Tool quarantine + investigation |
-| **MEDIUM** | Layer B (deception) — known injection pattern blocked | Pattern logged for analysis |
-| **LOW** | Layer A (schema) — structural violation | Logged only |
+| **CRITICAL** | Layer D (behavioral floor) - attacker bypassed 3 layers | Immediate escalation |
+| **HIGH** | Layer C (consensus) failed - potential data poisoning | Tool quarantine + investigation |
+| **MEDIUM** | Layer B (deception) - known injection pattern blocked | Pattern logged for analysis |
+| **LOW** | Layer A (schema) - structural violation | Logged only |
 
 **Security hardening:**
 - All hash comparisons use `hmac.compare_digest()` for constant-time comparison (prevents timing attacks)
@@ -485,7 +485,7 @@ allowed, reason = PermissionChecker.check(
 
 ## Hardware Memory Protection
 
-Optional C extension that allocates dedicated memory pages and marks them **read-only at the OS level**. Any write attempt — from Python, ctypes, C extensions, or assembly — triggers a hardware fault (SIGSEGV/ACCESS_VIOLATION).
+Optional C extension that allocates dedicated memory pages and marks them **read-only at the OS level**. Any write attempt - from Python, ctypes, C extensions, or assembly - triggers a hardware fault (SIGSEGV/ACCESS_VIOLATION).
 
 ```python
 from sovereign_mcp.hardware_protection import freeze, verify, is_protected, destroy
@@ -495,7 +495,7 @@ import hashlib
 data = b'{"tool": "get_weather", "hash": "a1b2c3..."}'
 buf = freeze(data)
 
-# OS-level read-only — hardware enforced
+# OS-level read-only - hardware enforced
 assert is_protected(buf)
 
 # Verify integrity
@@ -560,31 +560,31 @@ Every component in the decision path:
 
 | Module | Purpose | Lines |
 | ------ | ------- | ----- |
-| `frozen_namespace.py` | Immutable metaclass — root of trust. Deep-copy on access with caching. | ~200 |
+| `frozen_namespace.py` | Immutable metaclass - root of trust. Deep-copy on access with caching. | ~200 |
 | `tool_registry.py` | Register → freeze → verify lifecycle. Aggregate hash. | ~290 |
-| `schema_validator.py` | Layer A — type checking, constraints, field whitelisting. Immutable class. | ~240 |
-| `deception_detector.py` | Layer B — 40+ regex patterns, 4 categories, recursive scan. Zero-width strip. | ~205 |
-| `pii_detector.py` | PII/sensitive data detection — 17 pattern types, factory-compiled tuple. | ~195 |
-| `content_safety.py` | Content safety — 16 harmful content patterns, factory-compiled tuple. | ~165 |
+| `schema_validator.py` | Layer A - type checking, constraints, field whitelisting. Immutable class. | ~240 |
+| `deception_detector.py` | Layer B - 40+ regex patterns, 4 categories, recursive scan. Zero-width strip. | ~205 |
+| `pii_detector.py` | PII/sensitive data detection - 17 pattern types, factory-compiled tuple. | ~195 |
+| `content_safety.py` | Content safety - 16 harmful content patterns, factory-compiled tuple. | ~165 |
 | `canonical_json.py` | Canonical normalization + SHA-256 hashing for consensus. NaN/Inf sentinels. | ~180 |
-| `consensus.py` | Layer C — N-model structured JSON consensus. Full immutability. | ~260 |
-| `consensus_cache.py` | Cached consensus results — TTL, sweep, thread-safe. Full immutability. | ~250 |
+| `consensus.py` | Layer C - N-model structured JSON consensus. Full immutability. | ~260 |
+| `consensus_cache.py` | Cached consensus results - TTL, sweep, thread-safe. Full immutability. | ~250 |
 | `output_gate.py` | Orchestrates all layers + checks. Recursive hallucination detection. | ~485 |
 | `audit_log.py` | Hash-chained tamper-evident logging. File locking + rollback. | ~220 |
-| `value_constraints.py` | Countermeasure 1 — frozen numeric limits. Type-validated constraints. | ~106 |
-| `human_approval.py` | Countermeasure 3 — human-in-the-loop with fail-safe timeout + sweep. | ~185 |
+| `value_constraints.py` | Countermeasure 1 - frozen numeric limits. Type-validated constraints. | ~106 |
+| `human_approval.py` | Countermeasure 3 - human-in-the-loop with fail-safe timeout + sweep. | ~185 |
 | `permission_checker.py` | Capability + target validation with path traversal prevention. | ~95 |
-| `identity_checker.py` | Caller identity verification — token hashing, MappingProxyType freeze. | ~122 |
-| `input_sanitizer.py` | Active input sanitization — SQL, XSS, shell, path traversal, double-encoding. | ~213 |
-| `domain_checker.py` | Restricted domain access — whitelist/blacklist with wildcard matching. | ~180 |
-| `rate_limiter.py` | Per-tool rate limiting — sliding window, thread-safe. | ~119 |
-| `incident_response.py` | 5-stage incident pipeline — quarantine, escalation, forensics. | ~337 |
-| `sandbox_registry.py` | Dynamic tool staging — discover, validate, approve, export. | ~348 |
-| `tool_updater.py` | Blue-green freeze rotation — diff analysis, rollback snapshots. | ~481 |
-| `transport_security.py` | Mandatory mTLS — frozen CA, revocation, channel binding. | ~479 |
+| `identity_checker.py` | Caller identity verification - token hashing, MappingProxyType freeze. | ~122 |
+| `input_sanitizer.py` | Active input sanitization - SQL, XSS, shell, path traversal, double-encoding. | ~213 |
+| `domain_checker.py` | Restricted domain access - whitelist/blacklist with wildcard matching. | ~180 |
+| `rate_limiter.py` | Per-tool rate limiting - sliding window, thread-safe. | ~119 |
+| `incident_response.py` | 5-stage incident pipeline - quarantine, escalation, forensics. | ~337 |
+| `sandbox_registry.py` | Dynamic tool staging - discover, validate, approve, export. | ~348 |
+| `tool_updater.py` | Blue-green freeze rotation - diff analysis, rollback snapshots. | ~481 |
+| `transport_security.py` | Mandatory mTLS - frozen CA, revocation, channel binding. | ~479 |
 | `hardware_protection.py` | Auto-loading wrapper for C extension / ctypes fallback. | ~77 |
-| `frozen_memory.c` | C extension — OS-level read-only memory pages. | ~418 |
-| `frozen_memory_fallback.py` | ctypes fallback — same OS protection without compilation. | ~327 |
+| `frozen_memory.c` | C extension - OS-level read-only memory pages. | ~418 |
+| `frozen_memory_fallback.py` | ctypes fallback - same OS protection without compilation. | ~327 |
 | `integrity_lock.py` | Supply-chain defense. SHA-256 lockfile for .py/.c/.pyd/.so files. | ~308 |
 | `input_filter.py` | 9-layer multi-decode anti-bypass input sanitization. Persona hijack, multilingual keywords (15 languages), co-occurrence detection. | ~530 |
 | `adaptive_shield.py` | Self-learning security filter. Attack reporting, rule generation, sandbox testing, auto-deploy. | ~640 |
@@ -723,22 +723,22 @@ python setup.py build_ext --inplace
 The codebase has undergone **9 full audit passes** across 27 source files. **111 bugs found and fixed** (CRITICAL through sweep-level), including 7 new issues found in the final fresh sweep.
 
 **Bug categories fixed:**
-- **Timing attacks** — All hash comparisons use `hmac.compare_digest()` (constant-time)
-- **NaN/Infinity bypass** — Explicit `math.isnan()`/`math.isinf()` guards on all numeric comparisons
-- **Bool subclass bypass** — `isinstance(value, bool)` exclusion before `isinstance(value, int)`
-- **Immutability gaps** — `__delattr__` added to all frozen result classes (`GateResult`, `ConsensusResult`, `ConsensusCacheEntry`, `SchemaValidator`)
-- **Mutable windows** — Factory-compiled tuples for `_PII_PATTERNS` and `_SAFETY_PATTERNS` (eliminated mutable list during module load)
-- **Per-call recompilation** — Zero-width regex moved to module-level precompiled constant
-- **Return type inconsistency** — `transport_security.is_local_connection()` fixed to always return `bool`
-- **Internal state leaks** — `sandbox_registry.list_tools()` always returns a copy
-- **File locking** — Multi-process audit log safety (Windows `msvcrt`, Unix `fcntl`)
-- **In-memory rollback** — Audit log rolls back on file write failure
-- **Supply-chain defense** — Integrity lock now scans `.pyd`/`.so` compiled binaries
-- **ASLR protection** — Raw memory addresses redacted from logs
-- **Deep-copy caching** — FrozenNamespace caches immutable container copies for performance
-- **Thread-safe escalation** — Incident count + escalation inside lock (TOCTOU prevention)
-- **Expired request sweep** — Human approval proactively cleans up timed-out requests
-- **Runtime certificate revocation** — `transport_security.revoke_certificate()` for post-freeze CRL updates
+- **Timing attacks** - All hash comparisons use `hmac.compare_digest()` (constant-time)
+- **NaN/Infinity bypass** - Explicit `math.isnan()`/`math.isinf()` guards on all numeric comparisons
+- **Bool subclass bypass** - `isinstance(value, bool)` exclusion before `isinstance(value, int)`
+- **Immutability gaps** - `__delattr__` added to all frozen result classes (`GateResult`, `ConsensusResult`, `ConsensusCacheEntry`, `SchemaValidator`)
+- **Mutable windows** - Factory-compiled tuples for `_PII_PATTERNS` and `_SAFETY_PATTERNS` (eliminated mutable list during module load)
+- **Per-call recompilation** - Zero-width regex moved to module-level precompiled constant
+- **Return type inconsistency** - `transport_security.is_local_connection()` fixed to always return `bool`
+- **Internal state leaks** - `sandbox_registry.list_tools()` always returns a copy
+- **File locking** - Multi-process audit log safety (Windows `msvcrt`, Unix `fcntl`)
+- **In-memory rollback** - Audit log rolls back on file write failure
+- **Supply-chain defense** - Integrity lock now scans `.pyd`/`.so` compiled binaries
+- **ASLR protection** - Raw memory addresses redacted from logs
+- **Deep-copy caching** - FrozenNamespace caches immutable container copies for performance
+- **Thread-safe escalation** - Incident count + escalation inside lock (TOCTOU prevention)
+- **Expired request sweep** - Human approval proactively cleans up timed-out requests
+- **Runtime certificate revocation** - `transport_security.revoke_certificate()` for post-freeze CRL updates
 
 **Known limitations:**
 - C extension `memcmp` is not constant-time (Python fallback uses `hmac.compare_digest`)
@@ -785,9 +785,13 @@ MCP has 10 major security vulnerabilities. Current approaches try to patch them 
 
 Freeze the tool definitions. Freeze the schemas. Freeze the permissions. Freeze the expected output formats. Force structured JSON output. Verify everything against frozen references using hash consensus between multiple independent models. **Match = accept. Mismatch = decline. No exceptions. No overrides. No probability anywhere in the decision path.**
 
-The semantic gap — the hardest problem in AI security — is closed through four deterministic layers: schema validation, deception detection, structured JSON consensus, and the FrozenNamespace behavioral floor. Even the model-assisted verification step uses deterministic hash comparison for its accept/reject decision.
+The semantic gap - the hardest problem in AI security - is closed through four deterministic layers: schema validation, deception detection, structured JSON consensus, and the FrozenNamespace behavioral floor. Even the model-assisted verification step uses deterministic hash comparison for its accept/reject decision.
 
 **One primitive. Ten vulnerabilities. Four defense layers. Three data poisoning countermeasures. Fully deterministic. Patent pending.**
 
-*Sovereign Shield — Deterministic AI Security*
+*Sovereign Shield - Deterministic AI Security*
 *Mattijs Moens, 2026*
+
+
+## v3.3.0 Signature Hardening
+- Added recursive JSON sorting capabilities for tool definitions to guarantee stable cryptographic hashes across Blue-Green tool updates, irrespective of argument ordering.

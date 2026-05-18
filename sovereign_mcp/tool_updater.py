@@ -471,10 +471,23 @@ class ToolUpdater:
                 break
         return results
 
+    def _sort_deep(self, obj):
+        """Recursively sort dicts and lists to ensure canonical hashes."""
+        if isinstance(obj, dict):
+            return {k: self._sort_deep(v) for k, v in sorted(obj.items())}
+        elif isinstance(obj, list):
+            sorted_elements = [self._sort_deep(i) for i in obj]
+            try:
+                return sorted(sorted_elements, key=str)
+            except Exception:
+                return sorted_elements
+        return obj
+
     def _compute_definition_hash(self, definition):
         """Compute SHA-256 hash of a tool definition for comparison."""
+        sorted_def = self._sort_deep(definition)
         canonical = json.dumps(
-            definition, sort_keys=True, separators=(",", ":"),
+            sorted_def, sort_keys=True, separators=(",", ":"),
             default=str,
         )
         return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
