@@ -139,24 +139,24 @@ class TestDeceptionEdgeCases(unittest.TestCase):
         for _ in range(20):
             data = {"nested": data}
         is_clean, _ = DeceptionDetector.scan_dict(data)
-        self.assertTrue(is_clean)  # max_depth=10, so deeper levels skipped
+        self.assertFalse(is_clean)  # max_depth exceeded -> failsafe block
 
 
 class TestCanonicalJSONEdgeCases(unittest.TestCase):
     """Test canonical JSON with tricky inputs."""
 
-    def test_nan_normalized_to_zero(self):
+    def test_nan_normalized_to_unique_sentinel(self):
         from sovereign_mcp import canonical_hash
         import math
         a = {"value": float("nan")}
         b = {"value": 0}
-        self.assertEqual(canonical_hash(a), canonical_hash(b))
+        self.assertNotEqual(canonical_hash(a), canonical_hash(b))
 
-    def test_infinity_normalized_to_zero(self):
+    def test_infinity_normalized_to_unique_sentinel(self):
         from sovereign_mcp import canonical_hash
         a = {"value": float("inf")}
         b = {"value": 0}
-        self.assertEqual(canonical_hash(a), canonical_hash(b))
+        self.assertNotEqual(canonical_hash(a), canonical_hash(b))
 
     def test_negative_zero_normalized(self):
         from sovereign_mcp import canonical_hash

@@ -154,9 +154,10 @@ Tool Call
    ├─ [Tool Executes]
    │
    ├─ Step 5: Layer A - Schema Check ────── Output matches frozen schema?
-   ├─ Step 6: Layer B - Deception Scan ──── Known injection patterns?
-   ├─ Step 7: Layer C - JSON Consensus ──── N-model hash match?
-   └─ Step 8: Layer D - Behavioral Floor ── Within frozen capability set?
+   ├─ Step 6: Layer AP - Anti-Patterns ──── Output free of AI failure modes?
+   ├─ Step 7: Layer B - Deception Scan ──── Known injection patterns?
+   ├─ Step 8: Layer C - JSON Consensus ──── N-model hash match?
+   └─ Step 9: Layer D - Behavioral Floor ── Within frozen capability set?
          │
          ├─ ALL PASS → Admitted to LLM context
          └─ ANY FAIL → DECLINED (default deny)

@@ -19,6 +19,7 @@ from sovereign_mcp.deception_detector import DeceptionDetector
 from sovereign_mcp.pii_detector import PIIDetector
 from sovereign_mcp.content_safety import ContentSafety
 from sovereign_mcp.canonical_json import canonical_dumps
+from sovereign_mcp.anti_patterns import AntiPatternDetector
 
 logger = logging.getLogger(__name__)
 
@@ -188,6 +189,26 @@ class OutputGate:
             self._log_incident(tool_name, result, "LOW")
             return result
         layers_passed.append("A")
+
+        # --- Layer Anti-Pattern: AI Failure Mode Interception ---
+        if isinstance(tool_output, dict):
+            is_clean, ap_detections = AntiPatternDetector.scan_dict(tool_output, tool_name)
+            if not is_clean:
+                elapsed = (time.time() - start) * 1000
+                ap_summary = ", ".join(
+                    f"{d['category']}:'{d['match']}'" for d in ap_detections[:3]
+                )
+                result = GateResult(
+                    accepted=False,
+                    layer="anti_patterns",
+                    reason=f"AI Anti-Pattern detected: {ap_summary}",
+                    latency_ms=elapsed,
+                    layers_passed=layers_passed,
+                    detections=ap_detections,
+                )
+                self._log_incident(tool_name, result, "HIGH")
+                return result
+            layers_passed.append("AP")
 
         # --- Layer B: Deception Detection ---
         is_clean, detections = DeceptionDetector.scan_dict(tool_output)

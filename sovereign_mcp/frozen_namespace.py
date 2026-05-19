@@ -23,6 +23,7 @@ import hashlib
 import json
 import copy
 import logging
+import weakref
 
 logger = logging.getLogger(__name__)
 
@@ -46,21 +47,21 @@ class FrozenNamespace(type):
 
     # L-01: Cache deep copies to avoid O(n) copy on every access.
     # Since FrozenNamespace is immutable, cached copies are always valid.
-    # We use a separate dict (not on the class itself) to avoid triggering __setattr__.
-    _deep_copy_cache = {}
+    # We use a WeakKeyDictionary to prevent memory leaks and ID reuse pollution.
+    _deep_copy_cache = weakref.WeakKeyDictionary()
 
     def __getattribute__(cls, key):
         value = super().__getattribute__(key)
         # Deep-copy mutable containers to prevent reference mutation attacks.
         # Cache the copy since the source data never changes (immutable class).
         if isinstance(value, (dict, list)):
-            cache_key = (id(cls), key)
-            cached = FrozenNamespace._deep_copy_cache.get(cache_key)
+            class_cache = FrozenNamespace._deep_copy_cache.setdefault(cls, {})
+            cached = class_cache.get(key)
             if cached is not None:
                 # Return a fresh copy of the cached structure (not the cache ref itself)
                 return copy.deepcopy(cached)
             fresh_copy = copy.deepcopy(value)
-            FrozenNamespace._deep_copy_cache[cache_key] = fresh_copy
+            class_cache[key] = fresh_copy
             return copy.deepcopy(fresh_copy)
         return value
 

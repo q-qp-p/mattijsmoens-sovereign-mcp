@@ -543,7 +543,7 @@ class TestHumanApproval(unittest.TestCase):
             {"amount": {"auto_approve_max": 10, "timeout_seconds": 0}},
         )
         time.sleep(0.1)
-        timed_out, reason = checker.check_timeout(pending_id)
+        timed_out, reason, _ = checker.check_timeout(pending_id)
         self.assertTrue(timed_out)
         self.assertIn("DECLINED", reason)
 
